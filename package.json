@@ -1,0 +1,19 @@
+{
+  "name": "react_node_blogger",
+  "version": "1.0.0",
+  "description": "个人博客系统 - 毕业设计项目",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "server": "npm run dev --workspace=server",
+    "client": "npm run dev --workspace=client",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
