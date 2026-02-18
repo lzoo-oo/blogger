@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Space, message, Popconfirm, Tag } from 'antd';
+import { Table, Button, message, Popconfirm, Tag } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { getComments, deleteComment } from '../../api';
 
@@ -8,7 +8,7 @@ interface Comment {
   content: string;
   nickname: string;
   email: string;
-  status: number;
+  is_admin: number;
   created_at: string;
   article?: { id: number; title: string };
 }
@@ -27,7 +27,7 @@ export default function CommentManage() {
     setLoading(true);
     try {
       const res = await getComments({ page, pageSize: 10 });
-      setComments(res.data?.data || []);
+      setComments(res.data?.list || []);
       setTotal(res.data?.total || 0);
     } catch (error) {
       console.error('加载评论失败:', error);
@@ -60,12 +60,12 @@ export default function CommentManage() {
     },
     {
       title: '状态',
-      dataIndex: 'status',
+      dataIndex: 'is_admin',
       key: 'status',
       width: 80,
-      render: (status: number) => (
-        <Tag color={status === 1 ? 'green' : 'default'}>
-          {status === 1 ? '已审核' : '待审核'}
+      render: (isAdmin: number) => (
+        <Tag color={isAdmin ? 'gold' : 'green'}>
+          {isAdmin ? '博主回复' : '访客评论'}
         </Tag>
       ),
     },

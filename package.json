@@ -5,12 +5,18 @@
   "private": true,
   "workspaces": [
     "server",
-    "client"
+    "client",
+    "worker"
   ],
   "scripts": {
     "server": "npm run dev --workspace=server",
     "client": "npm run dev --workspace=client",
+    "worker": "npm run dev --workspace=worker",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:cf": "concurrently \"npm run dev --workspace=worker\" \"npm run dev --workspace=client\"",
+    "build": "npm run build --workspace=client",
+    "deploy:cf": "npm run build --workspace=client && npm run deploy --workspace=worker",
+    "d1:migrate": "npm run migrate --workspace=worker",
     "install:all": "npm install"
   },
   "devDependencies": {

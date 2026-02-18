@@ -62,11 +62,11 @@ export default function ArticleEdit() {
         title: article.title,
         summary: article.summary,
         cate_id: article.cate_id,
-        tagIds: article.tags?.map((t: Tag) => t.id) || [],
+        tag_ids: article.tags?.map((t: Tag) => t.id) || [],
         status: article.status,
       });
       setContent(article.content || '');
-      setCover(article.cover || '');
+      setCover(article.cover_img || '');
     } catch (error) {
       message.error('加载文章失败');
     } finally {
@@ -82,7 +82,7 @@ export default function ArticleEdit() {
       const data = {
         ...values,
         content,
-        cover,
+        cover_img: cover,
       };
 
       if (id) {
@@ -171,7 +171,7 @@ export default function ArticleEdit() {
             </Select>
           </Form.Item>
 
-          <Form.Item name="tagIds" label="标签">
+          <Form.Item name="tag_ids" label="标签">
             <Select mode="multiple" placeholder="请选择标签">
               {tags.map((tag) => (
                 <Select.Option key={tag.id} value={tag.id}>

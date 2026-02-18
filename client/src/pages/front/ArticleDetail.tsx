@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, Tag, Divider, List, Avatar, Input, Button, message, Spin } from 'antd';
-import { UserOutlined, LikeOutlined, MessageOutlined } from '@ant-design/icons';
-import { getArticleById, getComments, createComment } from '../../api';
+import { Tag, Divider, Input, Button, message, Spin, Empty } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+import { getArticleById, getArticleComments, createComment } from '../../api';
 
 interface Article {
   id: number;
   title: string;
   content: string;
-  cover: string;
+  cover_img: string;
   view_count: number;
   created_at: string;
-  category?: { id: number; name: string };
+  category?: { id: number; name: string } | null;
   tags?: { id: number; name: string }[];
 }
 
@@ -21,7 +21,29 @@ interface Comment {
   nickname: string;
   created_at: string;
   replies?: Comment[];
+  is_admin?: number;
 }
+
+const CommentItem = ({ comment, depth = 0 }: { comment: Comment; depth?: number }) => {
+  return (
+    <div className="comment-item" style={{ marginLeft: depth * 24 }}>
+      <div className="comment-avatar">
+        <UserOutlined />
+      </div>
+      <div className="comment-content-wrap">
+        <div className="comment-header">
+          <strong>{comment.nickname}</strong>
+          {comment.is_admin ? <Tag color="gold">博主</Tag> : null}
+          <span>{new Date(comment.created_at).toLocaleString()}</span>
+        </div>
+        <p>{comment.content}</p>
+        {comment.replies?.length
+          ? comment.replies.map((reply) => <CommentItem key={reply.id} comment={reply} depth={depth + 1} />)
+          : null}
+      </div>
+    </div>
+  );
+};
 
 export default function ArticleDetail() {
   const { id } = useParams<{ id: string }>();
@@ -30,12 +52,12 @@ export default function ArticleDetail() {
   const [loading, setLoading] = useState(true);
   const [commentContent, setCommentContent] = useState('');
   const [nickname, setNickname] = useState('');
+  const [email, setEmail] = useState('');
 
   useEffect(() => {
-    if (id) {
-      loadArticle();
-      loadComments();
-    }
+    if (!id) return;
+    loadArticle();
+    loadComments();
   }, [id]);
 
   const loadArticle = async () => {
@@ -43,7 +65,7 @@ export default function ArticleDetail() {
     try {
       const res = await getArticleById(Number(id));
       setArticle(res.data);
-    } catch (error) {
+    } catch {
       message.error('加载文章失败');
     } finally {
       setLoading(false);
@@ -51,11 +73,12 @@ export default function ArticleDetail() {
   };
 
   const loadComments = async () => {
+    if (!id) return;
     try {
-      const res = await getComments({ article_id: Number(id) });
+      const res = await getArticleComments(Number(id));
       setComments(res.data || []);
-    } catch (error) {
-      console.error('加载评论失败:', error);
+    } catch {
+      setComments([]);
     }
   };
 
@@ -64,95 +87,85 @@ export default function ArticleDetail() {
       message.warning('请填写昵称和评论内容');
       return;
     }
+
     try {
       await createComment({
         article_id: Number(id),
         content: commentContent,
         nickname,
+        email
       });
       message.success('评论成功');
       setCommentContent('');
       loadComments();
-    } catch (error) {
+    } catch {
       message.error('评论失败');
     }
   };
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
+      <div className="center-loading">
         <Spin size="large" />
       </div>
     );
   }
 
   if (!article) {
-    return <div>文章不存在</div>;
+    return (
+      <div className="glass-panel section-panel">
+        <Empty description="文章不存在" />
+      </div>
+    );
   }
 
   return (
-    <div>
-      <Card>
-        <h1 style={{ fontSize: 28, marginBottom: 16 }}>{article.title}</h1>
-        <div style={{ color: '#999', marginBottom: 16 }}>
-          <span>发布时间：{new Date(article.created_at).toLocaleDateString()}</span>
-          <span style={{ marginLeft: 16 }}>阅读：{article.view_count}</span>
-          {article.category && (
-            <Tag color="blue" style={{ marginLeft: 16 }}>{article.category.name}</Tag>
-          )}
+    <div className="front-page-stack">
+      <article className="glass-panel section-panel article-detail-panel">
+        <h1>{article.title}</h1>
+        <div className="article-detail-meta">
+          <span>{new Date(article.created_at).toLocaleDateString()}</span>
+          <span>{article.view_count} 阅读</span>
+          {article.category ? <Tag color="blue">{article.category.name}</Tag> : null}
+          {article.tags?.map((tag) => (
+            <Tag key={tag.id}>{tag.name}</Tag>
+          ))}
         </div>
-        {article.tags && article.tags.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            {article.tags.map((tag) => (
-              <Tag key={tag.id}>{tag.name}</Tag>
-            ))}
-          </div>
-        )}
+        {article.cover_img ? <img src={article.cover_img} alt={article.title} className="detail-cover" /> : null}
         <Divider />
-        <div
-          className="article-content"
-          dangerouslySetInnerHTML={{ __html: article.content }}
-          style={{ minHeight: 300 }}
-        />
-      </Card>
+        <div className="article-content" dangerouslySetInnerHTML={{ __html: article.content }} />
+      </article>
 
-      <Card title="评论" style={{ marginTop: 24 }}>
-        <div style={{ marginBottom: 16 }}>
+      <section className="glass-panel section-panel">
+        <h3 style={{ marginBottom: 16 }}>评论区</h3>
+        <div className="comment-form">
           <Input
             placeholder="昵称"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            style={{ width: 200, marginRight: 16, marginBottom: 8 }}
+            style={{ maxWidth: 240 }}
+          />
+          <Input
+            placeholder="邮箱（可选）"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ maxWidth: 280 }}
           />
           <Input.TextArea
-            placeholder="发表评论..."
+            placeholder="写下你的看法..."
             value={commentContent}
             onChange={(e) => setCommentContent(e.target.value)}
-            rows={3}
-            style={{ marginBottom: 8 }}
+            rows={4}
           />
           <Button type="primary" onClick={handleSubmitComment}>
             发表评论
           </Button>
         </div>
 
-        <List
-          itemLayout="horizontal"
-          dataSource={comments}
-          renderItem={(comment) => (
-            <List.Item>
-              <List.Item.Meta
-                avatar={<Avatar icon={<UserOutlined />} />}
-                title={comment.nickname}
-                description={comment.content}
-              />
-              <div style={{ fontSize: 12, color: '#999' }}>
-                {new Date(comment.created_at).toLocaleString()}
-              </div>
-            </List.Item>
-          )}
-        />
-      </Card>
+        <div className="comment-list">
+          {!comments.length ? <Empty description="还没有评论" /> : comments.map((item) => <CommentItem key={item.id} comment={item} />)}
+        </div>
+      </section>
     </div>
   );
 }

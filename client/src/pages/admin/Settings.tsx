@@ -11,7 +11,6 @@ interface Settings {
 
 export default function Settings() {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [avatar, setAvatar] = useState('');
 
@@ -20,7 +19,6 @@ export default function Settings() {
   }, []);
 
   const loadSettings = async () => {
-    setLoading(true);
     try {
       const res = await getSettings();
       const settings = res.data || {};
@@ -28,8 +26,6 @@ export default function Settings() {
       setAvatar(settings.avatar || '');
     } catch (error) {
       console.error('加载设置失败:', error);
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Card, List, Avatar, Empty, Spin } from 'antd';
+import { Empty, Spin } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
 import { getFriendLinks } from '../../api';
 
 interface FriendLink {
   id: number;
   name: string;
-  url: string;
-  logo: string;
+  link_url: string;
+  logo_url: string;
   description: string;
 }
 
@@ -20,11 +20,10 @@ export default function FriendLinks() {
   }, []);
 
   const loadLinks = async () => {
+    setLoading(true);
     try {
       const res = await getFriendLinks();
       setLinks(res.data || []);
-    } catch (error) {
-      console.error('加载友链失败:', error);
     } finally {
       setLoading(false);
     }
@@ -32,44 +31,40 @@ export default function FriendLinks() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
+      <div className="center-loading">
         <Spin size="large" />
       </div>
     );
   }
 
   return (
-    <div>
-      <Card title="友情链接">
-        {!links.length ? (
+    <div className="front-page-stack">
+      <section className="glass-panel section-panel">
+        <h2>友情链接</h2>
+        <p className="muted">与优秀站点互链，交流创作与技术。</p>
+      </section>
+
+      {!links.length ? (
+        <div className="glass-panel section-panel">
           <Empty description="暂无友情链接" />
-        ) : (
-          <List
-            grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 3, xl: 4, xxl: 4 }}
-            dataSource={links}
-            renderItem={(link) => (
-              <List.Item>
-                <Card
-                  hoverable
-                  onClick={() => window.open(link.url, '_blank')}
-                  style={{ textAlign: 'center' }}
-                >
-                  <Avatar
-                    size={64}
-                    src={link.logo}
-                    icon={<LinkOutlined />}
-                    style={{ marginBottom: 16 }}
-                  />
-                  <Card.Meta
-                    title={link.name}
-                    description={link.description || link.url}
-                  />
-                </Card>
-              </List.Item>
-            )}
-          />
-        )}
-      </Card>
+        </div>
+      ) : (
+        <section className="friend-grid">
+          {links.map((link) => (
+            <a
+              href={link.link_url}
+              target="_blank"
+              rel="noreferrer"
+              className="friend-card glass-panel"
+              key={link.id}
+            >
+              {link.logo_url ? <img src={link.logo_url} alt={link.name} /> : <div className="friend-icon"><LinkOutlined /></div>}
+              <h3>{link.name}</h3>
+              <p>{link.description || link.link_url}</p>
+            </a>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

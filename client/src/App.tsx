@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // 前台页面
 import FrontLayout from './components/FrontLayout';
@@ -25,11 +25,13 @@ function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
 
   useEffect(() => {
-    const handleStorage = () => {
-      setToken(localStorage.getItem('token'));
+    const syncToken = () => setToken(localStorage.getItem('token'));
+    window.addEventListener('storage', syncToken);
+    window.addEventListener('auth-change', syncToken as EventListener);
+    return () => {
+      window.removeEventListener('storage', syncToken);
+      window.removeEventListener('auth-change', syncToken as EventListener);
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   return (

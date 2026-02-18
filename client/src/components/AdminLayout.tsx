@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Dropdown, Avatar, message } from 'antd';
 import {
   DashboardOutlined,
@@ -23,6 +23,7 @@ interface Settings {
 
 const AdminLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [settings, setSettings] = useState<Settings | null>(null);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ const AdminLayout = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    window.dispatchEvent(new Event('auth-change'));
     message.success('退出成功');
     navigate('/admin/login');
   };

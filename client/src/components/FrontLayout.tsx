@@ -1,10 +1,7 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Layout, Menu, Input } from 'antd';
-import { HomeOutlined, SearchOutlined, LinkOutlined } from '@ant-design/icons';
-import { useState, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { SearchOutlined } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
 import { getCategories, getSettings } from '@/api';
-
-const { Header, Content, Sider } = Layout;
 
 interface CategoryItem {
   id: number;
@@ -19,85 +16,102 @@ interface Settings {
 
 const FrontLayout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
-    getCategories().then((res: any) => {
-      if (res.code === 200) {
-        setCategories(res.data);
+    Promise.all([getCategories(), getSettings()]).then(([cateRes, settingRes]: any[]) => {
+      if (cateRes?.code === 200) {
+        setCategories(cateRes.data || []);
       }
-    });
-    getSettings().then((res: any) => {
-      if (res.code === 200) {
-        setSettings(res.data);
+      if (settingRes?.code === 200) {
+        setSettings(settingRes.data || null);
       }
     });
   }, []);
 
   const handleSearch = () => {
-    if (searchKeyword.trim()) {
-      window.location.href = `/search?keyword=${encodeURIComponent(searchKeyword)}`;
-    }
+    const keyword = searchKeyword.trim();
+    if (!keyword) return;
+    navigate(`/search?keyword=${encodeURIComponent(keyword)}`);
   };
 
+  const navItems = [
+    { path: '/', label: '首页' },
+    { path: '/links', label: '友链' }
+  ];
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#001529', padding: '0 50px', display: 'flex', alignItems: 'center' }}>
-        <div style={{ color: '#fff', fontSize: '20px', fontWeight: 'bold', marginRight: 'auto' }}>
-          {settings?.nickname || '个人博客'}
+    <div className="front-shell">
+      <div className="bg-orb bg-orb-1" />
+      <div className="bg-orb bg-orb-2" />
+      <header className="front-header glass-panel">
+        <Link to="/" className="brand-wrap">
+          <span className="brand-dot" />
+          <div>
+            <h1>{settings?.nickname || 'Lyoolio Blog'}</h1>
+            <p>Chronicles of ideas, code and aesthetics</p>
+          </div>
+        </Link>
+        <nav className="front-nav">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={location.pathname === item.path ? 'active' : ''}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="front-search">
+          <SearchOutlined />
+          <input
+            placeholder="搜索文章..."
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch();
+            }}
+          />
         </div>
-        <Menu
-          theme="dark"
-          mode="horizontal"
-          selectedKeys={[location.pathname]}
-          items={[
-            { key: '/', label: <Link to="/">首页</Link>, icon: <HomeOutlined /> },
-            { key: '/links', label: <Link to="/links">友链</Link>, icon: <LinkOutlined /> }
-          ]}
-        />
-        <Input.Search
-          placeholder="搜索文章"
-          value={searchKeyword}
-          onChange={(e) => setSearchKeyword(e.target.value)}
-          onSearch={handleSearch}
-          style={{ width: 200, marginLeft: 20 }}
-          enterButton={<SearchOutlined />}
-        />
-      </Header>
-      <Layout>
-        <Sider width={250} style={{ background: '#fff', padding: '20px' }}>
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ textAlign: 'center' }}>
-              {settings?.avatar && (
-                <img
-                  src={settings.avatar}
-                  alt="avatar"
-                  style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }}
-                />
-              )}
-              <h3 style={{ marginTop: 10 }}>{settings?.nickname || '博主'}</h3>
-              <p style={{ color: '#666', fontSize: 14 }}>{settings?.email}</p>
+      </header>
+
+      <main className="front-main">
+        <aside className="front-aside glass-panel">
+          <div className="profile-card">
+            {settings?.avatar ? (
+              <img src={settings.avatar} alt={settings.nickname || 'avatar'} />
+            ) : (
+              <div className="avatar-fallback">{(settings?.nickname || 'B').slice(0, 1).toUpperCase()}</div>
+            )}
+            <h3>{settings?.nickname || '博主'}</h3>
+            <p>{settings?.email || 'hello@blog.dev'}</p>
+          </div>
+
+          <section className="category-card">
+            <div className="panel-title">文章分类</div>
+            <div className="category-list">
+              {categories.map((category) => (
+                <Link
+                  key={category.id}
+                  to={`/category/${category.id}`}
+                  className={location.pathname === `/category/${category.id}` ? 'active' : ''}
+                >
+                  {category.name}
+                </Link>
+              ))}
             </div>
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ marginBottom: 10, borderBottom: '1px solid #eee', paddingBottom: 5 }}>分类</h4>
-            <Menu
-              mode="inline"
-              items={categories.map((cat) => ({
-                key: `/category/${cat.id}`,
-                label: <Link to={`/category/${cat.id}`}>{cat.name}</Link>
-              }))}
-              selectedKeys={[location.pathname]}
-            />
-          </div>
-        </Sider>
-        <Content style={{ padding: '20px', background: '#f5f5f5' }}>
+          </section>
+        </aside>
+
+        <section className="front-content">
           <Outlet />
-        </Content>
-      </Layout>
-    </Layout>
+        </section>
+      </main>
+    </div>
   );
 };
 

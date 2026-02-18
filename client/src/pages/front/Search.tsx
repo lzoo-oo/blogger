@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Input, Card, List, Tag, Pagination, Empty, Spin } from 'antd';
+import { useEffect, useState } from 'react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { Input, Tag, Pagination, Empty, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { getArticles } from '../../api';
 
@@ -8,104 +8,113 @@ interface Article {
   id: number;
   title: string;
   summary: string;
-  cover: string;
   view_count: number;
   created_at: string;
-  category?: { id: number; name: string };
+  category?: { id: number; name: string } | null;
   tags?: { id: number; name: string }[];
 }
 
 export default function Search() {
   const [searchParams] = useSearchParams();
-  const keyword = searchParams.get('q') || '';
+  const navigate = useNavigate();
+  const keywordFromUrl = (searchParams.get('keyword') || '').trim();
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [searchValue, setSearchValue] = useState(keyword);
+  const [searchValue, setSearchValue] = useState(keywordFromUrl);
 
-  const handleSearch = async () => {
-    if (!searchValue.trim()) return;
+  useEffect(() => {
+    setSearchValue(keywordFromUrl);
+    setPage(1);
+    if (keywordFromUrl) {
+      runSearch(keywordFromUrl, 1);
+    } else {
+      setArticles([]);
+      setTotal(0);
+    }
+  }, [keywordFromUrl]);
+
+  const runSearch = async (keyword: string, targetPage: number) => {
+    if (!keyword.trim()) return;
 
     setLoading(true);
     try {
-      const res = await getArticles({ keyword: searchValue, page, pageSize: 10 });
-      setArticles(res.data.data || []);
-      setTotal(res.data.total || 0);
-    } catch (error) {
-      console.error('搜索失败:', error);
+      const res = await getArticles({ keyword, page: targetPage, pageSize: 10 });
+      setArticles(res?.data?.list || []);
+      setTotal(res?.data?.total || 0);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSearch = async () => {
+    const keyword = searchValue.trim();
+    setPage(1);
+    navigate(`/search?keyword=${encodeURIComponent(keyword)}`);
+  };
+
   return (
-    <div>
-      <Card style={{ marginBottom: 16 }}>
+    <div className="front-page-stack">
+      <section className="glass-panel section-panel">
         <Input.Search
-          placeholder="搜索文章..."
+          placeholder="搜索文章标题..."
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           onSearch={handleSearch}
           enterButton={<><SearchOutlined /> 搜索</>}
           size="large"
         />
-      </Card>
+      </section>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px 0' }}>
+        <div className="center-loading">
           <Spin size="large" />
         </div>
       ) : articles.length > 0 ? (
-        <>
-          <Card title={`搜索结果 (共 ${total} 篇)`}>
-            <List
-              dataSource={articles}
-              renderItem={(article) => (
-                <List.Item>
-                  <Card
-                    hoverable
-                    style={{ width: '100%' }}
-                    onClick={() => window.location.href = `/article/${article.id}`}
-                  >
-                    <Card.Meta
-                      title={article.title}
-                      description={
-                        <>
-                          <p style={{ color: '#666' }}>
-                            {article.summary?.substring(0, 150)}...
-                          </p>
-                          <div>
-                            <span style={{ marginRight: 16 }}>
-                              阅读：{article.view_count}
-                            </span>
-                            {article.category && (
-                              <Tag color="blue">{article.category.name}</Tag>
-                            )}
-                            {article.tags?.map((tag) => (
-                              <Tag key={tag.id}>{tag.name}</Tag>
-                            ))}
-                          </div>
-                        </>
-                      }
-                    />
-                  </Card>
-                </List.Item>
-              )}
-            />
-          </Card>
+        <section className="glass-panel section-panel list-panel">
+          <h3 style={{ marginBottom: 16 }}>搜索结果（{total}）</h3>
+          {articles.map((article) => (
+            <article key={article.id} className="list-item-row">
+              <div>
+                <Link to={`/article/${article.id}`} className="list-item-title">
+                  {article.title}
+                </Link>
+                <p>{article.summary || '暂无摘要'}</p>
+                <div>
+                  {article.category ? <Tag color="blue">{article.category.name}</Tag> : null}
+                  {article.tags?.map((tag) => (
+                    <Tag key={tag.id}>{tag.name}</Tag>
+                  ))}
+                </div>
+              </div>
+              <div className="list-item-meta">
+                <span>{article.view_count} 阅读</span>
+                <span>{new Date(article.created_at).toLocaleDateString()}</span>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : keywordFromUrl ? (
+        <div className="glass-panel section-panel">
+          <Empty description="未找到相关文章" />
+        </div>
+      ) : null}
+
+      {total > 10 ? (
+        <div className="pagination-wrap glass-panel">
           <Pagination
             current={page}
             total={total}
             pageSize={10}
-            onChange={(p) => { setPage(p); handleSearch(); }}
-            style={{ textAlign: 'center', marginTop: 24 }}
+            onChange={(targetPage) => {
+              setPage(targetPage);
+              runSearch(keywordFromUrl, targetPage);
+            }}
           />
-        </>
-      ) : (
-        keyword && <Empty description="未找到相关文章" />
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

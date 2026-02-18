@@ -1,0 +1,20 @@
+name = "lz-blogger-cf"
+main = "src/index.ts"
+compatibility_date = "2025-01-20"
+compatibility_flags = ["nodejs_compat"]
+account_id = "9456d7b520b2400f94d6cd8cf9c1ad64"
+
+[assets]
+directory = "../client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[vars]
+JWT_SECRET = "change_me_before_prod"
+PASSWORD_SALT = "blogger-salt"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "blogger-db"
+database_id = "61d558bf-dba9-4342-b202-fcf411cbefd3"
+migrations_dir = "migrations"

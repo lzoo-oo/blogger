@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Card, List, Tag, Pagination, Empty, Spin } from 'antd';
+import { Tag, Pagination, Empty, Spin } from 'antd';
 import { getArticles, getCategoryById } from '../../api';
 
 interface Article {
   id: number;
   title: string;
   summary: string;
-  cover: string;
   view_count: number;
   created_at: string;
   tags?: { id: number; name: string }[];
@@ -16,7 +15,7 @@ interface Article {
 interface Category {
   id: number;
   name: string;
-  description: string;
+  alias: string;
 }
 
 export default function Category() {
@@ -28,18 +27,17 @@ export default function Category() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    if (id) {
-      loadCategory();
-      loadArticles();
-    }
+    if (!id) return;
+    loadCategory();
+    loadArticles();
   }, [id, page]);
 
   const loadCategory = async () => {
     try {
       const res = await getCategoryById(Number(id));
-      setCategory(res.data);
-    } catch (error) {
-      console.error('加载分类失败:', error);
+      setCategory(res.data || null);
+    } catch {
+      setCategory(null);
     }
   };
 
@@ -47,10 +45,8 @@ export default function Category() {
     setLoading(true);
     try {
       const res = await getArticles({ cate_id: Number(id), page, pageSize: 10 });
-      setArticles(res.data.data || []);
-      setTotal(res.data.total || 0);
-    } catch (error) {
-      console.error('加载文章失败:', error);
+      setArticles(res?.data?.list || []);
+      setTotal(res?.data?.total || 0);
     } finally {
       setLoading(false);
     }
@@ -58,62 +54,50 @@ export default function Category() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
+      <div className="center-loading">
         <Spin size="large" />
       </div>
     );
   }
 
   return (
-    <div>
-      <Card title={category?.name || '分类文章'} style={{ marginBottom: 16 }}>
-        <p style={{ color: '#666' }}>{category?.description}</p>
-      </Card>
+    <div className="front-page-stack">
+      <section className="glass-panel section-panel">
+        <h2>{category?.name || '分类文章'}</h2>
+        <p className="muted">别名：{category?.alias || '未设置'}</p>
+      </section>
 
       {!articles.length ? (
-        <Empty description="该分类下暂无文章" />
+        <div className="glass-panel section-panel">
+          <Empty description="该分类下暂无文章" />
+        </div>
       ) : (
-        <>
-          <List
-            dataSource={articles}
-            renderItem={(article) => (
-              <List.Item>
-                <Card
-                  hoverable
-                  style={{ width: '100%' }}
-                  onClick={() => window.location.href = `/article/${article.id}`}
-                >
-                  <Card.Meta
-                    title={article.title}
-                    description={
-                      <>
-                        <p style={{ color: '#666' }}>
-                          {article.summary?.substring(0, 150)}...
-                        </p>
-                        <div>
-                          <span style={{ marginRight: 16 }}>
-                            阅读：{article.view_count}
-                          </span>
-                          {article.tags?.map((tag) => (
-                            <Tag key={tag.id}>{tag.name}</Tag>
-                          ))}
-                        </div>
-                      </>
-                    }
-                  />
-                </Card>
-              </List.Item>
-            )}
-          />
-          <Pagination
-            current={page}
-            total={total}
-            pageSize={10}
-            onChange={setPage}
-            style={{ textAlign: 'center', marginTop: 24 }}
-          />
-        </>
+        <section className="glass-panel section-panel list-panel">
+          {articles.map((article) => (
+            <article key={article.id} className="list-item-row">
+              <div>
+                <Link to={`/article/${article.id}`} className="list-item-title">
+                  {article.title}
+                </Link>
+                <p>{article.summary || '暂无摘要'}</p>
+                <div>
+                  {article.tags?.map((tag) => (
+                    <Tag key={tag.id}>{tag.name}</Tag>
+                  ))}
+                </div>
+              </div>
+              <div className="list-item-meta">
+                <span>{article.view_count} 阅读</span>
+                <span>{new Date(article.created_at).toLocaleDateString()}</span>
+              </div>
+            </article>
+          ))}
+        </section>
       )}
+
+      <div className="pagination-wrap glass-panel">
+        <Pagination current={page} total={total} pageSize={10} onChange={setPage} />
+      </div>
     </div>
   );
 }

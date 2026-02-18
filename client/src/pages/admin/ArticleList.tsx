@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Space, Tag, Modal, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Tag, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getArticles, deleteArticle, toggleArticleTop } from '../../api';
@@ -7,7 +7,7 @@ import { getArticles, deleteArticle, toggleArticleTop } from '../../api';
 interface Article {
   id: number;
   title: string;
-  cover: string;
+  cover_img: string;
   view_count: number;
   is_top: number;
   status: number;
@@ -31,7 +31,7 @@ export default function ArticleList() {
     setLoading(true);
     try {
       const res = await getArticles({ page, pageSize: 10 });
-      setArticles(res.data?.data || []);
+      setArticles(res.data?.list || []);
       setTotal(res.data?.total || 0);
     } catch (error) {
       console.error('加载文章失败:', error);
@@ -97,7 +97,7 @@ export default function ArticleList() {
       render: (isTop: number, record: Article) => (
         <Popconfirm
           title={isTop ? '取消置顶？' : '确认置顶？'}
-          onConfirm={() => handleToggleTop(record.id, !isTop)}
+          onConfirm={() => handleToggleTop(record.id, !Boolean(isTop))}
         >
           <Button size="small" type={isTop ? 'primary' : 'default'}>
             {isTop ? '已置顶' : '置顶'}
