@@ -12,6 +12,8 @@ type UserPayload = {
   id: number;
   username: string;
   role: string;
+  user_type: 'real';
+  status: number;
 };
 
 type Variables = {
@@ -77,6 +79,15 @@ const parseTagIds = (body: Record<string, unknown>) => {
       .filter((id) => Number.isFinite(id) && id > 0);
   }
   return null;
+};
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 };
 
 const hashPassword = async (password: string, salt: string) => {
@@ -167,27 +178,6 @@ const parseTags = (tagPairs: string | null) => {
     .filter((tag) => Number.isFinite(tag.id) && tag.name);
 };
 
-const auth = async (c: any, next: any) => {
-  const authHeader = c.req.header('Authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-
-  if (!token) {
-    return c.json(fail(401, '未登录'), 401);
-  }
-
-  try {
-    const payload = await verifyJwt(token, getJwtSecret(c.env));
-    c.set('user', {
-      id: Number(payload.id),
-      username: String(payload.username || ''),
-      role: String(payload.role || 'admin')
-    });
-    await next();
-  } catch {
-    return c.json(fail(401, '登录已过期'), 401);
-  }
-};
-
 const mapArticleRow = (row: ArticleRow) => ({
   id: row.id,
   title: row.title,
@@ -210,10 +200,75 @@ const mapArticleRow = (row: ArticleRow) => ({
   tags: parseTags(row.tag_pairs)
 });
 
+const buildToken = async (env: Bindings, user: any) => {
+  return signJwt(
+    {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      user_type: user.user_type || 'real',
+      status: Number(user.status ?? 1),
+      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    },
+    getJwtSecret(env)
+  );
+};
+
+const authAny = async (c: any, next: any) => {
+  const authHeader = c.req.header('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+  if (!token) {
+    return c.json(fail(401, '未登录'), 401);
+  }
+
+  try {
+    const payload = await verifyJwt(token, getJwtSecret(c.env));
+    const user = await c.env.DB.prepare(
+      'SELECT id, username, role, COALESCE(user_type, \'real\') AS user_type, COALESCE(status, 1) AS status FROM users WHERE id = ? LIMIT 1'
+    )
+      .bind(Number(payload.id))
+      .first();
+
+    if (!user) {
+      return c.json(fail(401, '用户不存在'), 401);
+    }
+
+    c.set('user', {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      user_type: 'real',
+      status: Number(user.status ?? 1)
+    } as UserPayload);
+
+    await next();
+  } catch {
+    return c.json(fail(401, '登录已过期'), 401);
+  }
+};
+
+const requireAdmin = async (c: any, next: any) => {
+  const user = c.get('user') as UserPayload;
+  if (!user || user.role !== 'admin') {
+    return c.json(fail(403, '无权限访问'), 403);
+  }
+  await next();
+};
+
+const requireActiveUser = (user: UserPayload) => {
+  if (user.role !== 'admin' && user.status !== 1) {
+    return false;
+  }
+  return true;
+};
+
 app.use('/api/*', cors());
+app.use('/api/my/*', authAny, requireAdmin);
 
 app.get('/api/health', (c) => c.json(ok('服务运行正常')));
 
+// 管理员登录
 app.post('/api/login', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, string>;
   const username = (body.username || '').trim();
@@ -231,20 +286,16 @@ app.post('/api/login', async (c) => {
     return c.json(fail(400, '用户不存在'));
   }
 
+  if (user.role !== 'admin') {
+    return c.json(fail(403, '该账号不是管理员'));
+  }
+
   const hashed = await hashPassword(password, getPasswordSalt(c.env));
   if (user.password !== hashed) {
     return c.json(fail(400, '密码错误'));
   }
 
-  const token = await signJwt(
-    {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
-    },
-    getJwtSecret(c.env)
-  );
+  const token = await buildToken(c.env, user);
 
   return c.json(
     ok('登录成功', {
@@ -252,10 +303,119 @@ app.post('/api/login', async (c) => {
       user: {
         id: user.id,
         username: user.username,
+        role: user.role,
+        user_type: 'real',
         nickname: user.nickname,
         avatar: user.avatar,
         email: user.email
       }
+    })
+  );
+});
+
+// 用户注册（仅真实用户，未登录即游客）
+app.post('/api/user/register', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '').trim();
+
+  if (!username || !password) {
+    return c.json(fail(400, '账号和密码不能为空'));
+  }
+
+  if (username.length < 3 || username.length > 32) {
+    return c.json(fail(400, '账号长度需在 3-32 位之间'));
+  }
+
+  if (password.length < 6) {
+    return c.json(fail(400, '密码至少 6 位'));
+  }
+
+  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE username = ? LIMIT 1').bind(username).first();
+  if (exists) {
+    return c.json(fail(400, '账号已存在'));
+  }
+
+  const now = nowSql();
+  const hashed = await hashPassword(password, getPasswordSalt(c.env));
+
+  const result = await c.env.DB.prepare(
+    `INSERT INTO users (username, password, nickname, avatar, email, role, user_type, status, created_at, updated_at)
+     VALUES (?, ?, ?, '', '', 'user', 'real', 1, ?, ?)`
+  )
+    .bind(username, hashed, username, now, now)
+    .run();
+
+  const user = await c.env.DB.prepare(
+    'SELECT id, username, role, COALESCE(user_type, \'real\') AS user_type, COALESCE(status, 1) AS status FROM users WHERE id = ?'
+  )
+    .bind(result.meta.last_row_id)
+    .first<any>();
+
+  const token = await buildToken(c.env, user);
+
+  return c.json(
+    ok('注册成功', {
+      token,
+      user
+    })
+  );
+});
+
+// 前台用户登录
+app.post('/api/user/login', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+
+  if (!username || !password) {
+    return c.json(fail(400, '账号和密码不能为空'));
+  }
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE username = ? LIMIT 1').bind(username).first<any>();
+  if (!user) {
+    return c.json(fail(400, '用户不存在'));
+  }
+
+  if (user.role === 'admin') {
+    return c.json(fail(403, '管理员请从后台登录'));
+  }
+
+  const hashed = await hashPassword(password, getPasswordSalt(c.env));
+  if (user.password !== hashed) {
+    return c.json(fail(400, '密码错误'));
+  }
+
+  if (Number(user.status ?? 1) !== 1) {
+    return c.json(fail(403, '账号已被禁用'));
+  }
+
+  const token = await buildToken(c.env, user);
+
+  return c.json(
+    ok('登录成功', {
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        user_type: 'real',
+        status: Number(user.status ?? 1)
+      }
+    })
+  );
+});
+
+app.get('/api/user/me', authAny, async (c) => {
+  const user = c.get('user') as UserPayload;
+
+  return c.json(
+    ok('获取成功', {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      user_type: 'real',
+      status: user.status
     })
   );
 });
@@ -354,7 +514,7 @@ app.get('/api/articles/:id', async (c) => {
   return c.json(ok('获取成功', article));
 });
 
-app.post('/api/my/articles/add', auth, async (c) => {
+app.post('/api/my/articles/add', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const title = String(body.title || '').trim();
   const content = String(body.content || '');
@@ -389,7 +549,7 @@ app.post('/api/my/articles/add', auth, async (c) => {
   return c.json(ok('发布成功', { id: articleId }));
 });
 
-app.put('/api/my/articles/:id', auth, async (c) => {
+app.put('/api/my/articles/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -439,14 +599,19 @@ app.put('/api/my/articles/:id', auth, async (c) => {
 
   const tagIds = parseTagIds(body);
   if (tagIds) {
-    const stmtList = [c.env.DB.prepare('DELETE FROM article_tags WHERE article_id = ?').bind(id), ...tagIds.map((tagId) => c.env.DB.prepare('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)').bind(id, tagId))];
+    const stmtList = [
+      c.env.DB.prepare('DELETE FROM article_tags WHERE article_id = ?').bind(id),
+      ...tagIds.map((tagId) =>
+        c.env.DB.prepare('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)').bind(id, tagId)
+      )
+    ];
     await c.env.DB.batch(stmtList);
   }
 
   return c.json(ok('更新成功'));
 });
 
-app.delete('/api/my/articles/:id', auth, async (c) => {
+app.delete('/api/my/articles/:id', async (c) => {
   const id = Number(c.req.param('id'));
 
   const exist = await c.env.DB.prepare('SELECT id FROM articles WHERE id = ?').bind(id).first();
@@ -463,7 +628,7 @@ app.delete('/api/my/articles/:id', auth, async (c) => {
   return c.json(ok('删除成功'));
 });
 
-app.put('/api/my/articles/:id/top', auth, async (c) => {
+app.put('/api/my/articles/:id/top', async (c) => {
   const id = Number(c.req.param('id'));
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -495,7 +660,7 @@ app.get('/api/categories/:id', async (c) => {
   return c.json(ok('获取成功', category));
 });
 
-app.post('/api/my/categories', auth, async (c) => {
+app.post('/api/my/categories', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const name = String(body.name || '').trim();
   const alias = String(body.alias || '').trim();
@@ -523,7 +688,7 @@ app.post('/api/my/categories', auth, async (c) => {
   return c.json(ok('添加成功', category));
 });
 
-app.put('/api/my/categories/:id', auth, async (c) => {
+app.put('/api/my/categories/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -542,7 +707,7 @@ app.put('/api/my/categories/:id', auth, async (c) => {
   return c.json(ok('更新成功'));
 });
 
-app.delete('/api/my/categories/:id', auth, async (c) => {
+app.delete('/api/my/categories/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(id).first();
   if (!category) {
@@ -562,7 +727,7 @@ app.get('/api/tags', async (c) => {
   return c.json(ok('获取成功', rows.results || []));
 });
 
-app.post('/api/my/tags', auth, async (c) => {
+app.post('/api/my/tags', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const name = String(body.name || '').trim();
 
@@ -584,7 +749,7 @@ app.post('/api/my/tags', auth, async (c) => {
   return c.json(ok('添加成功', tag));
 });
 
-app.put('/api/my/tags/:id', auth, async (c) => {
+app.put('/api/my/tags/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const tag = await c.env.DB.prepare('SELECT * FROM tags WHERE id = ?').bind(id).first<any>();
@@ -601,7 +766,7 @@ app.put('/api/my/tags/:id', auth, async (c) => {
   return c.json(ok('更新成功'));
 });
 
-app.delete('/api/my/tags/:id', auth, async (c) => {
+app.delete('/api/my/tags/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const tag = await c.env.DB.prepare('SELECT id FROM tags WHERE id = ?').bind(id).first<any>();
 
@@ -617,15 +782,19 @@ app.delete('/api/my/tags/:id', auth, async (c) => {
   return c.json(ok('删除成功'));
 });
 
-app.post('/api/comments/add', async (c) => {
+// 发表评论：取消匿名评论，必须登录，按 user_id 记录
+app.post('/api/comments/add', authAny, async (c) => {
+  const user = c.get('user') as UserPayload;
+  if (!requireActiveUser(user)) {
+    return c.json(fail(403, '账号已被禁用，无法评论'), 403);
+  }
+
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-  const nickname = String(body.nickname || '').trim();
-  const email = String(body.email || '').trim();
   const content = String(body.content || '').trim();
   const articleId = Number(body.article_id);
   const parentId = toNumberOrNull(body.parent_id);
 
-  if (!nickname || !content || !articleId) {
+  if (!content || !articleId) {
     return c.json(fail(400, '参数不完整'));
   }
 
@@ -636,33 +805,75 @@ app.post('/api/comments/add', async (c) => {
 
   const now = nowSql();
   const result = await c.env.DB.prepare(
-    `INSERT INTO comments (nickname, email, content, article_id, parent_id, is_admin, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?)`
+    `INSERT INTO comments (nickname, email, user_id, content, article_id, parent_id, is_admin, created_at, updated_at)
+     VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(nickname, email, content, articleId, parentId, now, now)
+    .bind(user.username, user.id, content, articleId, parentId, user.role === 'admin' ? 1 : 0, now, now)
     .run();
 
-  const comment = await c.env.DB.prepare('SELECT * FROM comments WHERE id = ?')
+  const comment = await c.env.DB.prepare(
+    `SELECT cm.*, u.username AS user_username, COALESCE(u.user_type, 'real') AS user_type, u.role AS user_role
+     FROM comments cm
+     LEFT JOIN users u ON u.id = cm.user_id
+     WHERE cm.id = ?`
+  )
     .bind(result.meta.last_row_id)
-    .first();
+    .first<any>();
 
-  return c.json(ok('评论成功', comment));
+  return c.json(
+    ok('评论成功', {
+      ...comment,
+      user: {
+        id: comment?.user_id,
+        username: comment?.user_username || user.username,
+        user_type: comment?.user_type || 'real',
+        role: comment?.user_role || user.role
+      }
+    })
+  );
 });
 
 app.get('/api/comments/article/:id', async (c) => {
   const articleId = Number(c.req.param('id'));
 
-  const rows = await c.env.DB.prepare('SELECT * FROM comments WHERE article_id = ? ORDER BY created_at DESC')
+  const rows = await c.env.DB.prepare(
+    `SELECT
+      cm.*,
+      u.id AS user_id_ref,
+      u.username AS user_username,
+      COALESCE(u.user_type, 'real') AS user_type,
+      COALESCE(u.role, 'user') AS user_role
+     FROM comments cm
+     LEFT JOIN users u ON u.id = cm.user_id
+     WHERE cm.article_id = ?
+     ORDER BY cm.created_at DESC`
+  )
     .bind(articleId)
     .all<any>();
 
-  const comments = rows.results || [];
-  const byParent = new Map<number | null, any[]>();
+  const comments = (rows.results || []).map((item) => ({
+    id: item.id,
+    content: item.content,
+    article_id: item.article_id,
+    parent_id: item.parent_id,
+    is_admin: item.is_admin,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    user_id: item.user_id,
+    user: {
+      id: item.user_id_ref || item.user_id || 0,
+      username: item.user_username || item.nickname || '已注销用户',
+      user_type: item.user_type === 'guest' ? 'guest' : 'real',
+      role: item.user_role || (item.is_admin ? 'admin' : 'user')
+    },
+    replies: [] as any[]
+  }));
 
+  const byParent = new Map<number | null, any[]>();
   for (const item of comments) {
     const key = item.parent_id === null ? null : Number(item.parent_id);
     const arr = byParent.get(key) || [];
-    arr.push({ ...item, replies: [] });
+    arr.push(item);
     byParent.set(key, arr);
   }
 
@@ -679,29 +890,75 @@ app.get('/api/comments/article/:id', async (c) => {
   return c.json(ok('获取成功', tree));
 });
 
-app.get('/api/my/comments', auth, async (c) => {
+// 评论管理（重构后含用户信息）
+app.get('/api/my/comments', async (c) => {
   const page = parsePage(c.req.query('page') || null, 1);
   const pageSize = parsePage(c.req.query('pageSize') || null, 10);
+  const keyword = String(c.req.query('keyword') || '').trim();
 
-  const totalRow = await c.env.DB.prepare('SELECT COUNT(*) AS total FROM comments').first<{ total: number }>();
-  const rows = await c.env.DB.prepare(
-    `SELECT cm.*, a.id AS article_id_ref, a.title AS article_title
+  const where: string[] = [];
+  const params: unknown[] = [];
+
+  if (keyword) {
+    where.push('(cm.content LIKE ? OR u.username LIKE ? OR a.title LIKE ?)');
+    params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const totalRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total
      FROM comments cm
+     LEFT JOIN users u ON u.id = cm.user_id
      LEFT JOIN articles a ON a.id = cm.article_id
+     ${whereSql}`
+  )
+    .bind(...params)
+    .first<{ total: number }>();
+
+  const rows = await c.env.DB.prepare(
+    `SELECT
+      cm.*,
+      a.id AS article_id_ref,
+      a.title AS article_title,
+      u.id AS user_id_ref,
+      u.username AS user_username,
+      COALESCE(u.user_type, 'real') AS user_type,
+      COALESCE(u.role, 'user') AS user_role,
+      COALESCE(u.status, 1) AS user_status
+     FROM comments cm
+     LEFT JOIN users u ON u.id = cm.user_id
+     LEFT JOIN articles a ON a.id = cm.article_id
+     ${whereSql}
      ORDER BY cm.created_at DESC
      LIMIT ? OFFSET ?`
   )
-    .bind(pageSize, (page - 1) * pageSize)
+    .bind(...params, pageSize, (page - 1) * pageSize)
     .all<any>();
 
   const list = (rows.results || []).map((item) => ({
-    ...item,
+    id: item.id,
+    content: item.content,
+    created_at: item.created_at,
+    is_admin: item.is_admin,
+    parent_id: item.parent_id,
+    user_id: item.user_id,
     article: item.article_id_ref
       ? {
           id: item.article_id_ref,
           title: item.article_title
         }
-      : null
+      : null,
+    user: {
+      id: item.user_id_ref || item.user_id || 0,
+      username:
+        item.user_username === 'legacy_guest'
+          ? '游客(历史)'
+          : item.user_username || item.nickname || '已注销用户',
+      user_type: item.user_username === 'legacy_guest' ? 'guest' : 'real',
+      role: item.user_role,
+      status: Number(item.user_status ?? 1)
+    }
   }));
 
   return c.json(
@@ -714,7 +971,7 @@ app.get('/api/my/comments', auth, async (c) => {
   );
 });
 
-app.delete('/api/my/comments/:id', auth, async (c) => {
+app.delete('/api/my/comments/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const comment = await c.env.DB.prepare('SELECT id FROM comments WHERE id = ?').bind(id).first();
 
@@ -730,7 +987,8 @@ app.delete('/api/my/comments/:id', auth, async (c) => {
   return c.json(ok('删除成功'));
 });
 
-app.post('/api/my/comments/reply', auth, async (c) => {
+app.post('/api/my/comments/reply', async (c) => {
+  const admin = c.get('user') as UserPayload;
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const articleId = Number(body.article_id);
   const parentId = toNumberOrNull(body.parent_id);
@@ -742,10 +1000,10 @@ app.post('/api/my/comments/reply', auth, async (c) => {
 
   const now = nowSql();
   const result = await c.env.DB.prepare(
-    `INSERT INTO comments (nickname, email, content, article_id, parent_id, is_admin, created_at, updated_at)
-     VALUES ('博主', '', ?, ?, ?, 1, ?, ?)`
+    `INSERT INTO comments (nickname, email, user_id, content, article_id, parent_id, is_admin, created_at, updated_at)
+     VALUES (?, '', ?, ?, ?, ?, 1, ?, ?)`
   )
-    .bind(content, articleId, parentId, now, now)
+    .bind(admin.username, admin.id, content, articleId, parentId, now, now)
     .run();
 
   const comment = await c.env.DB.prepare('SELECT * FROM comments WHERE id = ?')
@@ -755,12 +1013,129 @@ app.post('/api/my/comments/reply', auth, async (c) => {
   return c.json(ok('回复成功', comment));
 });
 
+// 用户管理（重构）
+app.get('/api/my/users', async (c) => {
+  const page = parsePage(c.req.query('page') || null, 1);
+  const pageSize = parsePage(c.req.query('pageSize') || null, 10);
+  const keyword = String(c.req.query('keyword') || '').trim();
+  const statusRaw = c.req.query('status');
+
+  const where: string[] = ['u.role != \"admin\"', 'u.username != \"legacy_guest\"'];
+  const params: unknown[] = [];
+
+  if (keyword) {
+    where.push('u.username LIKE ?');
+    params.push(`%${keyword}%`);
+  }
+
+  if (statusRaw !== undefined && statusRaw !== null && statusRaw !== '') {
+    where.push('COALESCE(u.status, 1) = ?');
+    params.push(Number(statusRaw) === 0 ? 0 : 1);
+  }
+
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+
+  const totalRow = await c.env.DB.prepare(`SELECT COUNT(*) AS total FROM users u ${whereSql}`)
+    .bind(...params)
+    .first<{ total: number }>();
+
+  const rows = await c.env.DB.prepare(
+    `SELECT
+      u.id,
+      u.username,
+      u.role,
+      COALESCE(u.user_type, 'real') AS user_type,
+      COALESCE(u.status, 1) AS status,
+      u.created_at,
+      u.updated_at,
+      (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comment_count
+     FROM users u
+     ${whereSql}
+     ORDER BY u.created_at DESC
+     LIMIT ? OFFSET ?`
+  )
+    .bind(...params, pageSize, (page - 1) * pageSize)
+    .all<any>();
+
+  return c.json(
+    ok('获取成功', {
+      list: rows.results || [],
+      total: totalRow?.total || 0,
+      page,
+      pageSize
+    })
+  );
+});
+
+app.put('/api/my/users/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  if (!user) {
+    return c.json(fail(404, '用户不存在'));
+  }
+
+  if (user.role === 'admin') {
+    return c.json(fail(400, '管理员账号不支持此操作'));
+  }
+
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+    updates.push('status = ?');
+    values.push(Number(body.status) === 0 ? 0 : 1);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'password')) {
+    const password = String(body.password || '').trim();
+    if (password.length < 6) {
+      return c.json(fail(400, '密码至少 6 位'));
+    }
+    const hashed = await hashPassword(password, getPasswordSalt(c.env));
+    updates.push('password = ?');
+    values.push(hashed);
+  }
+
+  if (!updates.length) {
+    return c.json(fail(400, '没有可更新字段'));
+  }
+
+  updates.push('updated_at = ?');
+  values.push(nowSql());
+
+  await c.env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...values, id).run();
+
+  return c.json(ok('更新成功'));
+});
+
+app.delete('/api/my/users/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  if (!user) {
+    return c.json(fail(404, '用户不存在'));
+  }
+
+  if (user.role === 'admin') {
+    return c.json(fail(400, '管理员账号不支持删除'));
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM comments WHERE user_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id)
+  ]);
+
+  return c.json(ok('删除成功'));
+});
+
 app.get('/api/friendlinks', async (c) => {
   const rows = await c.env.DB.prepare('SELECT * FROM friend_links ORDER BY id ASC').all<any>();
   return c.json(ok('获取成功', rows.results || []));
 });
 
-app.post('/api/my/friendlinks', auth, async (c) => {
+app.post('/api/my/friendlinks', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const name = String(body.name || '').trim();
   const linkUrl = String(body.link_url || '').trim();
@@ -786,7 +1161,7 @@ app.post('/api/my/friendlinks', auth, async (c) => {
   return c.json(ok('添加成功', link));
 });
 
-app.put('/api/my/friendlinks/:id', auth, async (c) => {
+app.put('/api/my/friendlinks/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
@@ -809,7 +1184,7 @@ app.put('/api/my/friendlinks/:id', auth, async (c) => {
   return c.json(ok('更新成功'));
 });
 
-app.delete('/api/my/friendlinks/:id', auth, async (c) => {
+app.delete('/api/my/friendlinks/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const link = await c.env.DB.prepare('SELECT id FROM friend_links WHERE id = ?').bind(id).first();
 
@@ -821,7 +1196,12 @@ app.delete('/api/my/friendlinks/:id', auth, async (c) => {
   return c.json(ok('删除成功'));
 });
 
-app.post('/api/upload', auth, async (c) => {
+app.post('/api/upload', authAny, async (c) => {
+  const user = c.get('user') as UserPayload;
+  if (user.role !== 'admin') {
+    return c.json(fail(403, '仅管理员可上传文件'), 403);
+  }
+
   const body = await c.req.parseBody();
   const file = body.file;
 
@@ -839,7 +1219,7 @@ app.post('/api/upload', auth, async (c) => {
   }
 
   const buffer = await file.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString('base64');
+  const base64 = arrayBufferToBase64(buffer);
   const url = `data:${file.type};base64,${base64}`;
 
   return c.json(ok('上传成功', { url }));
@@ -861,12 +1241,13 @@ app.get('/api/settings', async (c) => {
   );
 });
 
-app.get('/api/my/dashboard/stats', auth, async (c) => {
-  const [articleRow, commentRow, viewRow, categoryRow] = await Promise.all([
+app.get('/api/my/dashboard/stats', async (c) => {
+  const [articleRow, commentRow, viewRow, categoryRow, userRow] = await Promise.all([
     c.env.DB.prepare('SELECT COUNT(*) AS count FROM articles').first<{ count: number }>(),
     c.env.DB.prepare('SELECT COUNT(*) AS count FROM comments').first<{ count: number }>(),
     c.env.DB.prepare('SELECT COALESCE(SUM(view_count), 0) AS count FROM articles').first<{ count: number }>(),
-    c.env.DB.prepare('SELECT COUNT(*) AS count FROM categories').first<{ count: number }>()
+    c.env.DB.prepare('SELECT COUNT(*) AS count FROM categories').first<{ count: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM users WHERE role != 'admin'").first<{ count: number }>()
   ]);
 
   return c.json(
@@ -874,15 +1255,16 @@ app.get('/api/my/dashboard/stats', auth, async (c) => {
       articleCount: articleRow?.count || 0,
       commentCount: commentRow?.count || 0,
       viewCount: viewRow?.count || 0,
-      categoryCount: categoryRow?.count || 0
+      categoryCount: categoryRow?.count || 0,
+      userCount: userRow?.count || 0
     })
   );
 });
 
-app.put('/api/my/settings', auth, async (c) => {
-  const user = c.get('user');
+app.put('/api/my/settings', async (c) => {
+  const admin = c.get('user') as UserPayload;
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-  const current = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first<any>();
+  const current = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(admin.id).first<any>();
 
   if (!current) {
     return c.json(fail(404, '用户不存在'));
@@ -901,7 +1283,7 @@ app.put('/api/my/settings', auth, async (c) => {
   await c.env.DB.prepare(
     'UPDATE users SET nickname = ?, avatar = ?, email = ?, password = ?, updated_at = ? WHERE id = ?'
   )
-    .bind(nickname, avatar, email, password, nowSql(), user.id)
+    .bind(nickname, avatar, email, password, nowSql(), admin.id)
     .run();
 
   return c.json(ok('更新成功'));

@@ -7,6 +7,7 @@ interface Article {
   id: number;
   title: string;
   summary: string;
+  cover_img: string;
   view_count: number;
   created_at: string;
   tags?: { id: number; name: string }[];
@@ -62,9 +63,9 @@ export default function Category() {
 
   return (
     <div className="front-page-stack">
-      <section className="glass-panel section-panel">
+      <section className="glass-panel section-panel page-intro">
         <h2>{category?.name || '分类文章'}</h2>
-        <p className="muted">别名：{category?.alias || '未设置'}</p>
+        <p className="muted">围绕「{category?.alias || '未设置'}」主题整理的内容，共 {total} 篇。</p>
       </section>
 
       {!articles.length ? (
@@ -72,15 +73,22 @@ export default function Category() {
           <Empty description="该分类下暂无文章" />
         </div>
       ) : (
-        <section className="glass-panel section-panel list-panel">
+        <section className="glass-panel section-panel list-panel media-list-panel">
           {articles.map((article) => (
-            <article key={article.id} className="list-item-row">
-              <div>
+            <article key={article.id} className="list-item-row media-list-row">
+              <Link to={`/article/${article.id}`} className="media-list-cover">
+                {article.cover_img ? (
+                  <img src={article.cover_img} alt={article.title} />
+                ) : (
+                  <div className="article-cover article-cover-fallback" />
+                )}
+              </Link>
+              <div className="media-list-main">
                 <Link to={`/article/${article.id}`} className="list-item-title">
                   {article.title}
                 </Link>
                 <p>{article.summary || '暂无摘要'}</p>
-                <div>
+                <div className="list-item-tags">
                   {article.tags?.map((tag) => (
                     <Tag key={tag.id}>{tag.name}</Tag>
                   ))}

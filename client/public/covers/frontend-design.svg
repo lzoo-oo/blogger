@@ -1,0 +1,27 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1F1147"/>
+      <stop offset="0.5" stop-color="#4E2A84"/>
+      <stop offset="1" stop-color="#7B2CBF"/>
+    </linearGradient>
+    <radialGradient id="pink" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1220 260) rotate(140) scale(620 480)">
+      <stop stop-color="#FF99C8" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#FF99C8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg3)"/>
+  <rect width="1600" height="900" fill="url(#pink)"/>
+  <g opacity="0.8">
+    <rect x="180" y="170" width="1240" height="560" rx="26" fill="#FFFFFF" fill-opacity="0.09"/>
+    <rect x="220" y="220" width="360" height="460" rx="18" fill="#FFFFFF" fill-opacity="0.14"/>
+    <rect x="620" y="220" width="760" height="150" rx="18" fill="#FFFFFF" fill-opacity="0.14"/>
+    <rect x="620" y="400" width="360" height="280" rx="18" fill="#FFFFFF" fill-opacity="0.14"/>
+    <rect x="1020" y="400" width="360" height="280" rx="18" fill="#FFFFFF" fill-opacity="0.14"/>
+  </g>
+  <g fill="#F8FAFC" fill-opacity="0.46">
+    <circle cx="280" cy="260" r="10"/>
+    <circle cx="315" cy="260" r="10"/>
+    <circle cx="350" cy="260" r="10"/>
+  </g>
+</svg>

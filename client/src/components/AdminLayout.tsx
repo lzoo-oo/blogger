@@ -6,6 +6,7 @@ import {
   AppstoreOutlined,
   TagsOutlined,
   MessageOutlined,
+  TeamOutlined,
   LinkOutlined,
   SettingOutlined,
   LogoutOutlined,
@@ -35,8 +36,9 @@ const AdminLayout = () => {
   }, []);
 
   const handleLogout = () => {
+    localStorage.removeItem('admin_token');
     localStorage.removeItem('token');
-    window.dispatchEvent(new Event('auth-change'));
+    window.dispatchEvent(new Event('admin-auth-change'));
     message.success('退出成功');
     navigate('/admin/login');
   };
@@ -47,6 +49,7 @@ const AdminLayout = () => {
     { key: '/admin/categories', icon: <AppstoreOutlined />, label: '分类管理' },
     { key: '/admin/tags', icon: <TagsOutlined />, label: '标签管理' },
     { key: '/admin/comments', icon: <MessageOutlined />, label: '评论管理' },
+    { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' },
     { key: '/admin/links', icon: <LinkOutlined />, label: '友链管理' },
     { key: '/admin/settings', icon: <SettingOutlined />, label: '系统设置' }
   ];

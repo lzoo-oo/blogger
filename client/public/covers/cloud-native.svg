@@ -1,0 +1,29 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#001219"/>
+      <stop offset="0.55" stop-color="#005F73"/>
+      <stop offset="1" stop-color="#0A9396"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="200" y1="160" x2="1400" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#94D2BD" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#E9D8A6" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg2)"/>
+  <rect x="180" y="140" width="1240" height="620" rx="32" fill="url(#plate)" stroke="#E2E8F0" stroke-opacity="0.2"/>
+  <g opacity="0.52" stroke="#EE9B00" stroke-width="3">
+    <path d="M260 260H640V420H260V260Z"/>
+    <path d="M700 260H1040V350H700V260Z"/>
+    <path d="M700 380H1040V420H700V380Z"/>
+    <path d="M1080 260H1340V420H1080V260Z"/>
+    <path d="M260 470H830V650H260V470Z"/>
+    <path d="M870 470H1340V650H870V470Z"/>
+  </g>
+  <g opacity="0.42" stroke="#94D2BD" stroke-width="2">
+    <path d="M450 420V470"/>
+    <path d="M760 350V470"/>
+    <path d="M1210 420V470"/>
+    <path d="M550 650V710H1100V650"/>
+  </g>
+</svg>

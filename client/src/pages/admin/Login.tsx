@@ -14,9 +14,10 @@ export default function Login() {
       const res: any = await login(values);
       const token = res?.data?.token;
       if (token) {
+        localStorage.setItem('admin_token', token);
         localStorage.setItem('token', token);
         localStorage.setItem('username', values.username);
-        window.dispatchEvent(new Event('auth-change'));
+        window.dispatchEvent(new Event('admin-auth-change'));
         message.success('登录成功');
         navigate('/admin');
       } else {

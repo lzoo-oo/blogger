@@ -8,6 +8,7 @@ interface Stats {
   commentCount: number;
   viewCount: number;
   categoryCount: number;
+  userCount: number;
 }
 
 export default function Dashboard() {
@@ -16,6 +17,7 @@ export default function Dashboard() {
     commentCount: 0,
     viewCount: 0,
     categoryCount: 0,
+    userCount: 0,
   });
 
   useEffect(() => {
@@ -68,8 +70,8 @@ export default function Dashboard() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="分类数量"
-              value={stats.categoryCount}
+              title="用户数量"
+              value={stats.userCount}
               prefix={<UserOutlined />}
               valueStyle={{ color: '#cf1322' }}
             />

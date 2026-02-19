@@ -8,6 +8,7 @@ interface Article {
   id: number;
   title: string;
   summary: string;
+  cover_img: string;
   view_count: number;
   created_at: string;
   category?: { id: number; name: string } | null;
@@ -57,9 +58,9 @@ export default function Search() {
 
   return (
     <div className="front-page-stack">
-      <section className="glass-panel section-panel">
+      <section className="glass-panel section-panel page-intro">
         <Input.Search
-          placeholder="搜索文章标题..."
+          placeholder="搜索标题、关键词..."
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           onSearch={handleSearch}
@@ -73,16 +74,26 @@ export default function Search() {
           <Spin size="large" />
         </div>
       ) : articles.length > 0 ? (
-        <section className="glass-panel section-panel list-panel">
-          <h3 style={{ marginBottom: 16 }}>搜索结果（{total}）</h3>
+        <section className="glass-panel section-panel list-panel media-list-panel">
+          <h3 style={{ marginBottom: 10 }}>搜索结果（{total}）</h3>
+          <p className="muted" style={{ marginBottom: 14 }}>
+            关键词：{keywordFromUrl}
+          </p>
           {articles.map((article) => (
-            <article key={article.id} className="list-item-row">
-              <div>
+            <article key={article.id} className="list-item-row media-list-row">
+              <Link to={`/article/${article.id}`} className="media-list-cover">
+                {article.cover_img ? (
+                  <img src={article.cover_img} alt={article.title} />
+                ) : (
+                  <div className="article-cover article-cover-fallback" />
+                )}
+              </Link>
+              <div className="media-list-main">
                 <Link to={`/article/${article.id}`} className="list-item-title">
                   {article.title}
                 </Link>
                 <p>{article.summary || '暂无摘要'}</p>
-                <div>
+                <div className="list-item-tags">
                   {article.category ? <Tag color="blue">{article.category.name}</Tag> : null}
                   {article.tags?.map((tag) => (
                     <Tag key={tag.id}>{tag.name}</Tag>

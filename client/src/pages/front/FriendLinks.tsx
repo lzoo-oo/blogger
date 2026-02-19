@@ -39,9 +39,9 @@ export default function FriendLinks() {
 
   return (
     <div className="front-page-stack">
-      <section className="glass-panel section-panel">
+      <section className="glass-panel section-panel page-intro">
         <h2>友情链接</h2>
-        <p className="muted">与优秀站点互链，交流创作与技术。</p>
+        <p className="muted">记录值得长期关注的创作站点、技术博客与产品团队。</p>
       </section>
 
       {!links.length ? (
@@ -58,9 +58,16 @@ export default function FriendLinks() {
               className="friend-card glass-panel"
               key={link.id}
             >
-              {link.logo_url ? <img src={link.logo_url} alt={link.name} /> : <div className="friend-icon"><LinkOutlined /></div>}
+              {link.logo_url ? (
+                <img src={link.logo_url} alt={link.name} />
+              ) : (
+                <div className="friend-icon">
+                  <LinkOutlined />
+                </div>
+              )}
               <h3>{link.name}</h3>
               <p>{link.description || link.link_url}</p>
+              <span className="friend-link-url">{link.link_url}</span>
             </a>
           ))}
         </section>

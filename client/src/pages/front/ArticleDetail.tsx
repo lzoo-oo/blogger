@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Tag, Divider, Input, Button, message, Spin, Empty } from 'antd';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Tag, Divider, Input, Button, message, Spin, Empty, Modal } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { getArticleById, getArticleComments, createComment } from '../../api';
+import { getArticleById, getArticleComments, createComment, getCurrentUser } from '../../api';
 
 interface Article {
   id: number;
@@ -15,16 +15,32 @@ interface Article {
   tags?: { id: number; name: string }[];
 }
 
+interface CommentUser {
+  id: number;
+  username: string;
+  user_type?: 'guest' | 'real';
+  role: string;
+}
+
 interface Comment {
   id: number;
   content: string;
-  nickname: string;
   created_at: string;
   replies?: Comment[];
   is_admin?: number;
+  user?: CommentUser;
+}
+
+interface CurrentUser {
+  id: number;
+  username: string;
+  role: string;
+  status: number;
 }
 
 const CommentItem = ({ comment, depth = 0 }: { comment: Comment; depth?: number }) => {
+  const user = comment.user;
+
   return (
     <div className="comment-item" style={{ marginLeft: depth * 24 }}>
       <div className="comment-avatar">
@@ -32,8 +48,9 @@ const CommentItem = ({ comment, depth = 0 }: { comment: Comment; depth?: number 
       </div>
       <div className="comment-content-wrap">
         <div className="comment-header">
-          <strong>{comment.nickname}</strong>
-          {comment.is_admin ? <Tag color="gold">博主</Tag> : null}
+          <strong>{user?.username || '已注销用户'}</strong>
+          {user?.role === 'admin' || comment.is_admin ? <Tag color="gold">管理员</Tag> : null}
+          {user?.role === 'admin' ? null : user?.user_type === 'guest' ? <Tag color="purple">游客(历史)</Tag> : <Tag color="blue">真实用户</Tag>}
           <span>{new Date(comment.created_at).toLocaleString()}</span>
         </div>
         <p>{comment.content}</p>
@@ -47,18 +64,52 @@ const CommentItem = ({ comment, depth = 0 }: { comment: Comment; depth?: number 
 
 export default function ArticleDetail() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [article, setArticle] = useState<Article | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentContent, setCommentContent] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [email, setEmail] = useState('');
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {
     if (!id) return;
     loadArticle();
     loadComments();
+    loadCurrentUser();
   }, [id]);
+
+  useEffect(() => {
+    const sync = () => loadCurrentUser();
+    window.addEventListener('user-auth-change', sync as EventListener);
+    return () => window.removeEventListener('user-auth-change', sync as EventListener);
+  }, []);
+
+  const promptLoginWhenComment = () => {
+    Modal.confirm({
+      title: '登录后可评论',
+      content: '当前身份为“游客”，发表评论前请先登录。也可以在右上角注册账号后再评论。',
+      okText: '去登录',
+      cancelText: '取消',
+      onOk: () => navigate(`/user/login?from=${encodeURIComponent(location.pathname + location.search)}`)
+    });
+  };
+
+  const loadCurrentUser = async () => {
+    const token = localStorage.getItem('user_token');
+    if (!token) {
+      setCurrentUser(null);
+      return;
+    }
+
+    try {
+      const res: any = await getCurrentUser();
+      setCurrentUser(res?.data || null);
+    } catch {
+      setCurrentUser(null);
+      localStorage.removeItem('user_token');
+    }
+  };
 
   const loadArticle = async () => {
     setLoading(true);
@@ -83,23 +134,26 @@ export default function ArticleDetail() {
   };
 
   const handleSubmitComment = async () => {
-    if (!commentContent.trim() || !nickname.trim()) {
-      message.warning('请填写昵称和评论内容');
+    if (!currentUser) {
+      promptLoginWhenComment();
+      return;
+    }
+
+    if (!commentContent.trim()) {
+      message.warning('请输入评论内容');
       return;
     }
 
     try {
       await createComment({
         article_id: Number(id),
-        content: commentContent,
-        nickname,
-        email
+        content: commentContent
       });
       message.success('评论成功');
       setCommentContent('');
       loadComments();
-    } catch {
-      message.error('评论失败');
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '评论失败');
     }
   };
 
@@ -138,24 +192,23 @@ export default function ArticleDetail() {
 
       <section className="glass-panel section-panel">
         <h3 style={{ marginBottom: 16 }}>评论区</h3>
+
         <div className="comment-form">
-          <Input
-            placeholder="昵称"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            style={{ maxWidth: 240 }}
-          />
-          <Input
-            placeholder="邮箱（可选）"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ maxWidth: 280 }}
-          />
+          <div className="comment-login-tip" style={{ marginBottom: 4 }}>
+            当前身份：
+            {currentUser
+              ? `${currentUser.username}（真实用户${currentUser.status === 1 ? '' : ' / 已禁用'}）`
+              : '游客'}
+          </div>
           <Input.TextArea
-            placeholder="写下你的看法..."
+            placeholder={currentUser ? '写下你的看法...' : '点击输入框后将提示登录'}
             value={commentContent}
             onChange={(e) => setCommentContent(e.target.value)}
             rows={4}
+            onClick={() => {
+              if (!currentUser) promptLoginWhenComment();
+            }}
+            readOnly={!currentUser}
           />
           <Button type="primary" onClick={handleSubmitComment}>
             发表评论

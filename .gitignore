@@ -36,10 +36,9 @@ lerna-debug.log*
 # Testing
 coverage/
 
-# Uploads (keep directory but ignore files)
-server/uploads/*
-!server/uploads/.gitkeep
-
 # Database
 *.sqlite
 *.sqlite3
+
+# Cloudflare worker local state
+worker/.wrangler/

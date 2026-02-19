@@ -1,8 +1,15 @@
 import request from './request';
 
-// 登录
-export const login = (data: { username: string; password: string }) =>
-  request.post('/login', data);
+// 管理员登录
+export const login = (data: { username: string; password: string }) => request.post('/login', data);
+
+// 前台用户
+export const registerUser = (data: { username: string; password: string }) =>
+  request.post('/user/register', data);
+
+export const loginUser = (data: { username: string; password: string }) => request.post('/user/login', data);
+
+export const getCurrentUser = () => request.get('/user/me');
 
 // 文章
 export const getArticles = (params: {
@@ -32,8 +39,7 @@ export const updateArticle = (id: number, data: any) =>
 
 export const deleteArticle = (id: number) => request.delete(`/my/articles/${id}`);
 
-export const toggleArticleTop = (id: number, is_top: boolean) =>
-  request.put(`/my/articles/${id}/top`, { is_top });
+export const toggleArticleTop = (id: number, is_top: boolean) => request.put(`/my/articles/${id}/top`, { is_top });
 
 // 分类
 export const getCategories = () => request.get('/categories');
@@ -50,18 +56,13 @@ export const updateTag = (id: number, data: { name?: string }) => request.put(`/
 export const deleteTag = (id: number) => request.delete(`/my/tags/${id}`);
 
 // 评论
-export const getComments = (params: { page?: number; pageSize?: number }) =>
+export const getComments = (params: { page?: number; pageSize?: number; keyword?: string }) =>
   request.get('/my/comments', { params });
 
 export const getArticleComments = (articleId: number) => request.get(`/comments/article/${articleId}`);
 
-export const createComment = (data: {
-  nickname: string;
-  email?: string;
-  content: string;
-  article_id: number;
-  parent_id?: number;
-}) => request.post('/comments/add', data);
+export const createComment = (data: { content: string; article_id: number; parent_id?: number }) =>
+  request.post('/comments/add', data);
 
 export const addComment = createComment;
 
@@ -69,6 +70,24 @@ export const deleteComment = (id: number) => request.delete(`/my/comments/${id}`
 
 export const replyComment = (data: { article_id: number; parent_id?: number; content: string }) =>
   request.post('/my/comments/reply', data);
+
+// 用户管理
+export const getUsers = (params: {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+  status?: number;
+}) => request.get('/my/users', { params });
+
+export const updateUser = (
+  id: number,
+  data: {
+    status?: number;
+    password?: string;
+  }
+) => request.put(`/my/users/${id}`, data);
+
+export const deleteUser = (id: number) => request.delete(`/my/users/${id}`);
 
 // 友链
 export const getFriendLinks = () => request.get('/friendlinks');

@@ -8,6 +8,8 @@ import ArticleDetail from './pages/front/ArticleDetail';
 import Category from './pages/front/Category';
 import Search from './pages/front/Search';
 import FriendLinks from './pages/front/FriendLinks';
+import UserLogin from './pages/front/UserLogin';
+import UserRegister from './pages/front/UserRegister';
 
 // 后台页面
 import AdminLayout from './components/AdminLayout';
@@ -18,19 +20,26 @@ import ArticleEdit from './pages/admin/ArticleEdit';
 import CategoryManage from './pages/admin/CategoryManage';
 import TagManage from './pages/admin/TagManage';
 import CommentManage from './pages/admin/CommentManage';
+import UserManage from './pages/admin/UserManage';
 import FriendLinkManage from './pages/admin/FriendLinkManage';
 import Settings from './pages/admin/Settings';
 
 function App() {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [adminToken, setAdminToken] = useState<string | null>(
+    localStorage.getItem('admin_token') || localStorage.getItem('token')
+  );
 
   useEffect(() => {
-    const syncToken = () => setToken(localStorage.getItem('token'));
+    const syncToken = () => {
+      setAdminToken(localStorage.getItem('admin_token') || localStorage.getItem('token'));
+    };
+
     window.addEventListener('storage', syncToken);
-    window.addEventListener('auth-change', syncToken as EventListener);
+    window.addEventListener('admin-auth-change', syncToken as EventListener);
+
     return () => {
       window.removeEventListener('storage', syncToken);
-      window.removeEventListener('auth-change', syncToken as EventListener);
+      window.removeEventListener('admin-auth-change', syncToken as EventListener);
     };
   }, []);
 
@@ -43,6 +52,8 @@ function App() {
         <Route path="category/:id" element={<Category />} />
         <Route path="search" element={<Search />} />
         <Route path="links" element={<FriendLinks />} />
+        <Route path="user/login" element={<UserLogin />} />
+        <Route path="user/register" element={<UserRegister />} />
       </Route>
 
       {/* 后台登录 */}
@@ -51,13 +62,7 @@ function App() {
       {/* 后台管理 */}
       <Route
         path="/admin"
-        element={
-          token ? (
-            <AdminLayout />
-          ) : (
-            <Navigate to="/admin/login" replace />
-          )
-        }
+        element={adminToken ? <AdminLayout /> : <Navigate to="/admin/login" replace />}
       >
         <Route index element={<Dashboard />} />
         <Route path="articles" element={<ArticleList />} />
@@ -65,6 +70,7 @@ function App() {
         <Route path="categories" element={<CategoryManage />} />
         <Route path="tags" element={<TagManage />} />
         <Route path="comments" element={<CommentManage />} />
+        <Route path="users" element={<UserManage />} />
         <Route path="links" element={<FriendLinkManage />} />
         <Route path="settings" element={<Settings />} />
       </Route>
